@@ -28,6 +28,8 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <dirent.h>
+#include <unistd.h>
 
 #include "word_count.h"
 #include "word_helpers.h"
@@ -35,20 +37,62 @@
 /*
  * main - handle command line, spawning one thread per file.
  */
+struct attribs{
+      FILE *fp;
+      word_count_list_t *word_tracker;
+};
+
+void *call_add_word(struct attribs *at){
+  char str[100];
+  while (fscanf(at->fp, "%s", str) == 1){
+    add_word(at->word_tracker,str);
+  }
+  return 0;
+}
+
 int main(int argc, char* argv[]) {
   /* Create the empty data structure. */
   word_count_list_t word_counts;
   init_words(&word_counts);
-
   if (argc <= 1) {
     /* Process stdin in a single thread. */
     count_words(&word_counts, stdin);
-  } else {
+  } 
+  else {
     /* TODO */
+    struct dirent *de;
+    pthread_t tid;
+    DIR *dr;
+    dr=opendir(argv[1]);
+    if (dr == NULL){
+      printf("Could not open current directory" );
+      return 0;
+    }
+    struct attribs *attr = (struct attribs*)malloc(sizeof(struct attribs));
+    char buffer[300];
+    int length;
+    while ((de = readdir(dr)) != NULL){
+      FILE *file;
+      length=sprintf(buffer,"%s%c%s",argv[1],'/',de->d_name);
+      //printf("%s\n",buffer);
+      char files[length];
+      strcpy(files,buffer);
+      file=fopen(files,"r");
+      if(file == NULL) {
+        perror("Error opening file");
+        return(-1);
+      }
+      attr->fp=file;
+      attr->word_tracker=&word_counts;
+      pthread_create(&tid, NULL,(void*) call_add_word, attr);
+      fclose(file);
+    }
+    closedir(dr);
   }
-
+  
   /* Output final result of all threads' work. */
   wordcount_sort(&word_counts, less_count);
   fprint_words(&word_counts, stdout);
+  //pthread_exit(NULL);
   return 0;
 }
